@@ -164,13 +164,13 @@ unknown_command:
     ret
 
 ; Данные
-header db '============================= UnderCore ====================================', 0
+header db 'UnderCore', 0
 menu db 'Commands:', 10, 13
      db '  help - get list of the commands', 10, 13
      db '  cls - clear terminal', 10, 13
      db '  shut - shutdown PC', 10, 13, 0
 unknown_msg db 'Unknown command.', 0
-prompt db '[UnderCore] > ', 0
+prompt db '> ', 0
 help_str db 'help', 0
 cls_str db 'cls', 0
 shut_str db 'shut', 0
