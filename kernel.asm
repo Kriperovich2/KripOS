@@ -1,39 +1,48 @@
-[BITS 16]
-[ORG 500h]
+[BITS 16]        ; Режим 16-бит (режим реальных адресов)
+[ORG 0x7C00]     ; Адрес загрузки BIOS
 
 start:
-    cli
-    call set_video_mode
-    call print_interface
-    call print_newline
-    call initialize_filesystem
-    call shell
-    jmp $
+    cli          ; Отключить прерывания
+    xor ax, ax   ; Обнулить регистры
+    mov ds, ax
+    mov es, ax
+    mov ss, ax
+    mov sp, 0x7C00 ; Установить стек
 
+    call set_video_mode ; Установить видеорежим
+    call print_interface ; Вывести интерфейс
+    call shell          ; Запустить оболочку
+
+    hlt          ; Остановить процессор
+
+; Установка видеорежима (текстовый режим 80x25)
 set_video_mode:
-    mov ax, 0x03
-    int 0x10
+    mov ax, 0x03 ; Видеорежим 80x25
+    int 0x10     ; Вызов BIOS
     ret
 
+; Вывод строки на экран
 print_string:
-    mov ah, 0x0E
+    mov ah, 0x0E ; Функция BIOS для вывода символа
 .print_char:
-    lodsb
-    cmp al, 0
+    lodsb        ; Загрузить следующий символ из строки
+    cmp al, 0    ; Проверить конец строки
     je .done
-    int 0x10
+    int 0x10     ; Вывести символ
     jmp .print_char
 .done:
     ret
 
+; Вывод новой строки
 print_newline:
     mov ah, 0x0E
-    mov al, 0x0D
+    mov al, 0x0D ; Возврат каретки
     int 0x10
-    mov al, 0x0A
+    mov al, 0x0A ; Перевод строки
     int 0x10
     ret
 
+; Вывод интерфейса
 print_interface:
     mov si, header
     call print_string
@@ -42,12 +51,7 @@ print_interface:
     call print_newline
     ret
 
-print_help:
-    mov si, menu
-    call print_string
-    call print_newline
-    ret
-
+; Оболочка (shell)
 shell:
     mov si, prompt
     call print_string
@@ -56,31 +60,31 @@ shell:
     call execute_command
     jmp shell
 
+; Чтение команды с клавиатуры
 read_command:
     mov di, command_buffer
     xor cx, cx
 .read_loop:
-    mov ah, 0x00
+    mov ah, 0x00 ; Ожидание ввода символа
     int 0x16
-    cmp al, 0x0D
+    cmp al, 0x0D ; Enter
     je .done_read
-    cmp al, 0x08
+    cmp al, 0x08 ; Backspace
     je .handle_backspace
-    cmp cx, 255
+    cmp cx, 255  ; Проверка на переполнение буфера
     jge .done_read
-    stosb
-    mov ah, 0x0E
-    mov bl, 0x1F
+    stosb        ; Сохранить символ в буфер
+    mov ah, 0x0E ; Вывести символ на экран
     int 0x10
-    inc cx
+    inc cx       ; Увеличить счетчик символов
     jmp .read_loop
 
 .handle_backspace:
-    cmp di, command_buffer
+    cmp di, command_buffer ; Проверка, есть ли что удалять
     je .read_loop
-    dec di
+    dec di       ; Удалить символ из буфера
     dec cx
-    mov ah, 0x0E
+    mov ah, 0x0E ; Удалить символ с экрана
     mov al, 0x08
     int 0x10
     mov al, ' '
@@ -90,9 +94,10 @@ read_command:
     jmp .read_loop
 
 .done_read:
-    mov byte [di], 0
+    mov byte [di], 0 ; Завершить строку нулем
     ret
 
+; Выполнение команды
 execute_command:
     mov si, command_buffer
     ; Проверка команды "help"
@@ -100,139 +105,50 @@ execute_command:
     call compare_strings
     je do_help
 
-    mov si, command_buffer
     ; Проверка команды "cls"
     mov di, cls_str
     call compare_strings
     je do_cls
 
-    mov si, command_buffer
     ; Проверка команды "shut"
     mov di, shut_str
     call compare_strings
     je do_shutdown
 
-    mov si, command_buffer
-    ; Проверка команды "load"
-    cmp byte [si], 'l'
-    cmp byte [si+1], 'o'
-    cmp byte [si+2], 'a'
-    cmp byte [si+3], 'd'
-    je load_program
-
-    ; Проверка команды "cd"
-    mov di, cd_str
-    call compare_strings
-    je do_cd
-
-    ; Проверка команды "ls"
-    mov di, ls_str
-    call compare_strings
-    je do_ls
-
-    ; Проверка команды "mkdir"
-    mov di, mkdir_str
-    call compare_strings
-    je do_mkdir
-
-    ; Проверка команды "rm"
-    mov di, rm_str
-    call compare_strings
-    je do_rm
-
-    ; Проверка команды "rmdir"
-    mov di, rmdir_str
-    call compare_strings
-    je do_rmdir
-
-    ; Проверка команды "und"
-    mov di, und_str
-    call compare_strings
-    je do_und
-
+    ; Неизвестная команда
     call unknown_command
     ret
 
+; Сравнение строк
 compare_strings:
-    ; si - указатель на вводимую команду
-    ; di - указатель на проверяемую команду
     xor cx, cx
 .next_char:
-    lodsb                ; Загружаем следующий символ из команды пользователя
-    cmp al, [di]        ; Сравниваем с символом из команды
-    jne .not_equal       ; Если не равны, переходим к метке .not_equal
-    cmp al, 0           ; Проверяем конец строки
-    je .equal           ; Если конец строки, команды равны
-    inc di              ; Переходим к следующему символу проверяемой команды
-    jmp .next_char      ; Повторяем сравнение
+    lodsb        ; Загрузить символ из команды пользователя
+    cmp al, [di] ; Сравнить с символом из команды
+    jne .not_equal
+    cmp al, 0    ; Проверить конец строки
+    je .equal
+    inc di
+    jmp .next_char
 .not_equal:
-    ret                 ; Возвращаемся, если команды не равны
+    ret
 .equal:
-    ret                 ; Возвращаемся, если команды равны
-
-initialize_filesystem:
-    ; Проверка, существует ли папка "UnderCore"
-    ; Если нет, создаем ее
     ret
 
-do_cd:
-    ; Реализация команды cd
-    ret
-
-do_ls:
-    ; Реализация команды ls
-    ret
-
-do_mkdir:
-    ; Реализация команды mkdir
-    ret
-
-do_rm:
-    ; Реализация команды rm
-    ret
-
-do_rmdir:
-    ; Реализация команды rmdir
-    ret
-
-do_und:
-    ; Реализация команды und
-    ret
-
-help_str db 'help', 0
-cls_str db 'cls', 0
-shut_str db 'shut', 0
-load_str db 'load', 0
-cd_str db 'cd', 0
-ls_str db 'ls', 0
-mkdir_str db 'mkdir', 0
-rm_str db 'rm', 0
-rmdir_str db 'rmdir', 0
-und_str db 'und', 0
-
-do_banner:
-    call print_interface
-    call print_newline
-    ret
-
+; Команда "help"
 do_help:
-    call print_help
-    call print_newline
-    ret
-
-do_cls:
-    mov cx, 25
-.clear_loop:
-    call print_newline
-    loop .clear_loop
-    ret
-
-unknown_command:
-    mov si, unknown_msg
+    mov si, menu
     call print_string
     call print_newline
     ret
 
+; Команда "cls" (очистка экрана)
+do_cls:
+    mov ax, 0x03 ; Видеорежим 80x25
+    int 0x10
+    ret
+
+; Команда "shut" (выключение компьютера)
 do_shutdown:
     mov ax, 0x5307
     mov bx, 0x0001
@@ -240,99 +156,27 @@ do_shutdown:
     int 0x15
     ret
 
-load_program:
-    mov si, command_buffer
-    add si, 5  ; Пропускаем "load "
-
-    xor cx, cx
-    xor ax, ax
-
-.next_digit:
-    cmp byte [si], 0
-    je .done_load
-    cmp byte [si], '0'
-    jb .done_load
-    cmp byte [si], '9'
-    ja .done_load
-    sub byte [si], '0'
-    mov ax, cx
-    mov al, [si]
-    add ax, cx
-    shl cx, 1
-    add cx, ax
-    inc si
-    jmp .next_digit
-
-.done_load:
-    call start_program
-    ret
-
-start_program:
-    mov ah, 0x02
-    mov al, 16
-    mov ch, 0
-    mov dh, 0
-    mov bx, 700h
-    int 0x13
-    jmp 700h
-
-write_to_sector:
-    mov ah, 0x03
-    mov al, 1
-    mov ch, 0
-    mov cl, 10
-    mov dh, 0
-    mov dl, 0x80
-    mov bx, text_to_write
-
-    int 0x13
-
-    jc write_error
-
-    mov si, success_msg
-    call print_string
-    call read_from_sector
-    ret
-    
-read_from_sector:
-    mov ah, 0x02
-    mov al, 1
-    mov ch, 0
-    mov cl, 10
-    mov dh, 0
-    mov dl, 0x80
-    mov bx, buffer
-
-    int 0x13
-
-    jc read_error
-
-    mov si, buffer
+; Неизвестная команда
+unknown_command:
+    mov si, unknown_msg
     call print_string
     call print_newline
     ret
-    
-write_error db 'Write error!', 0
-read_error db 'Read error!', 0
-        
+
+; Данные
 header db '============================= UnderCore ====================================', 0
-menu db '_________________________________________________', 10, 13, 10 ,13
-     db 'Commands:', 10, 13, 10, 13
-     db '  help - get list of the commands', 10, 1
+menu db 'Commands:', 10, 13
+     db '  help - get list of the commands', 10, 13
      db '  cls - clear terminal', 10, 13
-     db '  shut - shutdown PC', 10, 13
-     db '  load <sector num> - load program from disk sector', 10, 13
-     db '  cd <dir> - change directory', 10, 13
-     db '  ls - list directory contents', 10, 13
-     db '  mkdir <dir> - create directory', 10, 13
-     db '  rm <file> - remove file', 10, 13
-     db '  rmdir <dir> - remove directory', 10, 13
-     db '  und <file> - text editor', 10, 13
-     db '_________________________________________________', 0
+     db '  shut - shutdown PC', 10, 13, 0
 unknown_msg db 'Unknown command.', 0
 prompt db '[UnderCore] > ', 0
-mt db '', 10, 13, 0
-success_msg db 'Data written successfully!', 10, 13, 0
-buffer db 512 dup(0)
-text_to_write db 'Hello!', 0
+help_str db 'help', 0
+cls_str db 'cls', 0
+shut_str db 'shut', 0
 command_buffer db 256 dup(0)
+
+; Заполнение оставшейся части сектора нулями
+times 510-($-$$) db 0
+; Сигнатура загрузочного сектора
+dw 0xAA55
