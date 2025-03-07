@@ -22,5 +22,5 @@ dd if=kernel.bin of=undercore.img bs=512 seek=1 conv=notrunc
 ```
 Launch
 ```
-qemu-system-i386 -hda disk_img/undercore.img
+qemu-system-i386 -hda undercore.img
 ```
