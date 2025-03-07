@@ -16,11 +16,8 @@ nasm -f bin kernel.asm -o kernel.bin
 Create a disk image
 ```
 dd if=/dev/zero of=undercore.img bs=512 count=16
-```
-```
+
 dd if=boot.bin of=undercore.img conv=notrunc
-```
-```
 dd if=kernel.bin of=undercore.img bs=512 seek=1 conv=notrunc
 ```
 Launch
